@@ -1,0 +1,38 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    // Per-user chat sessions and messages
+    match /users/{userId}/sessions/{sessionId} {
+      allow read, write: if signedIn() && request.auth.uid == userId;
+
+      match /messages/{messageId} {
+        allow read, write: if signedIn() && request.auth.uid == userId;
+      }
+    }
+
+    // Uploaded documents owned by a user
+    match /documents/{docId} {
+      // Read existing doc only if you are the owner
+      allow get, list, read: if signedIn() && resource.data.userId == request.auth.uid;
+      // Create only if the userId being written matches the caller
+      allow create: if signedIn() && request.resource.data.userId == request.auth.uid;
+      // Update/Delete only if the existing doc is owned by the caller
+      allow update, delete: if signedIn() && resource.data.userId == request.auth.uid;
+
+      // Chunks subcollection under each document
+      match /chunks/{chunkId} {
+        // Use parent document's userId for auth
+        function parentOwnerUid() {
+          return get(/databases/$(database)/documents/documents/$(docId)).data.userId;
+        }
+        allow get, list, read: if signedIn() && parentOwnerUid() == request.auth.uid;
+        allow create: if signedIn() && parentOwnerUid() == request.auth.uid;
+        allow update, delete: if signedIn() && parentOwnerUid() == request.auth.uid;
+      }
+    }
+  }
+}

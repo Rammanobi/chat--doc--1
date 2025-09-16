@@ -12,6 +12,9 @@ import {
   serverTimestamp,
   setDoc,
   updateDoc,
+  getDocs,
+  writeBatch,
+  deleteDoc,
 } from 'firebase/firestore';
 
 export interface ChatSession {
@@ -25,10 +28,11 @@ interface ChatSessionsContextType {
   sessions: ChatSession[];
   activeSessionId: string;
   activeSession: ChatSession;
-  newSession: () => void;
+  newSession: () => Promise<string>;
   switchSession: (id: string) => void;
-  addMessage: (msg: ChatMessage) => void;
-  setTitleIfEmptyFromFirstUser: (text: string) => void;
+  addMessage: (msg: ChatMessage, sessionOverrideId?: string) => Promise<string>;
+  setTitleIfEmptyFromFirstUser: (text: string, sessionOverrideId?: string) => void;
+  deleteSession: (id: string) => Promise<void>;
 }
 
 const ChatSessionsContext = createContext<ChatSessionsContextType | undefined>(undefined);
@@ -48,8 +52,8 @@ export const ChatSessionsProvider = ({ children }: { children: ReactNode }) => {
     return { ...base, messages: msgs } as ChatSession;
   }, [sessions, activeSessionId, messagesBySession]);
 
-  const newSession = async () => {
-    if (!user) return;
+  const newSession = async (): Promise<string> => {
+    if (!user) return '';
     const sessionsCol = collection(db, 'users', user.uid, 'sessions');
     const ref = await addDoc(sessionsCol, {
       title: 'New Chat',
@@ -57,32 +61,69 @@ export const ChatSessionsProvider = ({ children }: { children: ReactNode }) => {
       updatedAt: serverTimestamp(),
     });
     setActiveSessionId(ref.id);
+    return ref.id;
   };
 
   const switchSession = (id: string) => {
     setActiveSessionId(id);
   };
 
-  const addMessage = async (msg: ChatMessage) => {
-    if (!user || !activeSessionId) return;
-    const messagesCol = collection(db, 'users', user.uid, 'sessions', activeSessionId, 'messages');
-    await addDoc(messagesCol, {
+  const addMessage = async (msg: ChatMessage, sessionOverrideId?: string): Promise<string> => {
+    if (!user) return '';
+    const sid = sessionOverrideId || activeSessionId;
+    if (!sid) return '';
+    const messagesCol = collection(db, 'users', user.uid, 'sessions', sid, 'messages');
+    const ref = await addDoc(messagesCol, {
       text: msg.text,
       sender: msg.sender,
       timestamp: serverTimestamp(),
     });
     // updatedAt on session
-    const sessionRef = doc(db, 'users', user.uid, 'sessions', activeSessionId);
+    const sessionRef = doc(db, 'users', user.uid, 'sessions', sid);
     await updateDoc(sessionRef, { updatedAt: serverTimestamp() }).catch(() => {});
+    return ref.id;
   };
 
-  const setTitleIfEmptyFromFirstUser = async (text: string) => {
-    if (!user || !activeSessionId) return;
+  const setTitleIfEmptyFromFirstUser = async (text: string, sessionOverrideId?: string) => {
+    if (!user) return;
+    const sid = sessionOverrideId || activeSessionId;
+    if (!sid) return;
     const title = text.trim() ? text.trim().slice(0, 40) : 'New Chat';
-    const sessionRef = doc(db, 'users', user.uid, 'sessions', activeSessionId);
+    const sessionRef = doc(db, 'users', user.uid, 'sessions', sid);
     await updateDoc(sessionRef, { title, updatedAt: serverTimestamp() }).catch(async () => {
       await setDoc(sessionRef, { title, createdAt: serverTimestamp(), updatedAt: serverTimestamp() }, { merge: true });
     });
+  };
+
+  const deleteSession = async (id: string) => {
+    if (!user || !id) return;
+    // delete messages subcollection in batches
+    const msgsCol = collection(db, 'users', user.uid, 'sessions', id, 'messages');
+    const snap = await getDocs(msgsCol);
+    if (!snap.empty) {
+      let batch = writeBatch(db);
+      let count = 0;
+      for (const d of snap.docs) {
+        batch.delete(d.ref);
+        count++;
+        if (count >= 450) { // safety limit under 500
+          await batch.commit();
+          batch = writeBatch(db);
+          count = 0;
+        }
+      }
+      if (count > 0) await batch.commit();
+    }
+    // delete session document
+    const sessionRef = doc(db, 'users', user.uid, 'sessions', id);
+    await deleteDoc(sessionRef).catch(() => {});
+    // clear local state
+    setMessagesBySession((prev) => {
+      const copy = { ...prev };
+      delete copy[id];
+      return copy;
+    });
+    if (activeSessionId === id) setActiveSessionId('');
   };
 
   // Subscribe to sessions for the logged-in user
@@ -134,6 +175,7 @@ export const ChatSessionsProvider = ({ children }: { children: ReactNode }) => {
     switchSession,
     addMessage,
     setTitleIfEmptyFromFirstUser,
+    deleteSession,
   };
 
   return (

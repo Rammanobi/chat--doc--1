@@ -1,3 +1,34 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+/* Make the app fill the viewport height and keep background consistent */
+html, body, #root {
+  height: 100%;
+}
+
+/* Optional base colors that align with dark theme; Tailwind classes will override as needed */
+body {
+  background: #0f172a; /* slate-900 */
+  color: #e2e8f0;      /* slate-200 */
+}
+
+/* Custom scrollbars */
+/* Base (light) */
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+::-webkit-scrollbar-thumb {
+  background: #cbd5e1; /* slate-300 */
+  border-radius: 8px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+/* Dark variant: apply when a parent has .theme-dark or .dark */
+.theme-dark ::-webkit-scrollbar-thumb,
+.dark ::-webkit-scrollbar-thumb {
+  background: #1f2937; /* slate-800 */
+}

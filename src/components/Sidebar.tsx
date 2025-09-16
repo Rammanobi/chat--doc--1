@@ -3,7 +3,10 @@ import { useTheme } from '../contexts/ThemeContext';
 import { useAuth } from '../contexts/AuthContext';
 import { auth } from '../firebase';
 import { signOut } from 'firebase/auth';
-import DocumentList from './DocumentList';
+import FileList from './FileList';
+import DeleteButton from './DeleteButton';
+import { useChatSessions } from '../contexts/ChatSessionsContext';
+import { useSelectedDoc } from '../contexts/SelectedDocContext';
 
 interface SidebarProps {
   isOpen: boolean;
@@ -12,6 +15,8 @@ interface SidebarProps {
 const Sidebar = ({ isOpen }: SidebarProps) => {
   const { theme } = useTheme();
   const { user } = useAuth();
+  const { sessions, activeSessionId, newSession, switchSession, deleteSession } = useChatSessions();
+  const { setSelectedDocId } = useSelectedDoc();
 
   const handleLogout = async () => {
     try {
@@ -30,20 +35,41 @@ const Sidebar = ({ isOpen }: SidebarProps) => {
       <nav className="flex-grow">
         <ul>
           <li className="mb-4">
-            <a href="#" className={`flex items-center p-2 rounded-md ${theme === 'dark' ? 'text-gray-300 hover:bg-gray-700' : 'text-gray-700 hover:bg-gray-300'}`}>
+            <button
+              onClick={() => { newSession(); setSelectedDocId(null); }}
+              className={`w-full text-left flex items-center p-2 rounded-md ${theme === 'dark' ? 'text-gray-300 hover:bg-gray-700' : 'text-gray-700 hover:bg-gray-300'}`}
+            >
               <Plus size={20} className="mr-3" />
               New Chat
-            </a>
+            </button>
           </li>
           <li className="mb-4">
-            <a href="#" className={`flex items-center p-2 rounded-md ${theme === 'dark' ? 'text-gray-300 hover:bg-gray-700' : 'text-gray-700 hover:bg-gray-300'}`}>
+            <div className={`flex items-center p-2 rounded-md ${theme === 'dark' ? 'text-gray-300' : 'text-gray-700'}`}>
               <Clock size={20} className="mr-3" />
               History
-            </a>
+            </div>
+            {/* Sessions list */}
+            <ul className="mt-2 pl-2 space-y-1 max-h-64 overflow-y-auto pr-2">
+              {sessions.map((s) => (
+                <li key={s.id} className="flex items-center gap-1">
+                  <button
+                    onClick={() => { switchSession(s.id); setSelectedDocId(null); }}
+                    className={`flex-1 text-left truncate p-2 rounded-md text-sm ${s.id === activeSessionId ? (theme === 'dark' ? 'bg-gray-700 text-white' : 'bg-gray-300 text-black') : (theme === 'dark' ? 'hover:bg-gray-700' : 'hover:bg-gray-300')}`}
+                    title={s.title}
+                  >
+                    {s.title || 'New Chat'}
+                  </button>
+                  <DeleteButton
+                    onConfirm={() => deleteSession(s.id)}
+                    tooltip="Delete chat"
+                  />
+                </li>
+              ))}
+            </ul>
           </li>
           {/* Add other nav items here */}
         </ul>
-        <DocumentList />
+        <FileList />
       </nav>
       {user && (
         <div>

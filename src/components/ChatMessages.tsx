@@ -3,7 +3,7 @@ import { useTheme } from '../contexts/ThemeContext';
 export interface Message {
   id: string;
   text: string;
-  sender: 'user' | 'ai';
+  sender: 'user' | 'ai' | 'system';
 }
 
 interface ChatMessagesProps {
@@ -16,22 +16,29 @@ const ChatMessages = ({ messages }: ChatMessagesProps) => {
   return (
     <div className="flex-1 p-4 overflow-y-auto">
       <div className="max-w-3xl mx-auto">
-        {messages.map((message) => (
-          <div
-            key={message.id}
-            className={`mb-4 flex ${message.sender === 'user' ? 'justify-end' : 'justify-start'}`}
-          >
-            <div
-              className={`rounded-lg p-3 max-w-lg ${
-                message.sender === 'user'
-                  ? 'bg-blue-600 text-white'
-                  : theme === 'dark' ? 'bg-gray-700' : 'bg-gray-200'
-              }`}
-            >
-              <p>{message.text}</p>
+        {messages.map((message) => {
+          const alignment =
+            message.sender === 'user'
+              ? 'justify-end'
+              : message.sender === 'system'
+                ? 'justify-center'
+                : 'justify-start';
+
+          const bubbleClass =
+            message.sender === 'user'
+              ? 'bg-blue-600 text-white'
+              : message.sender === 'system'
+                ? (theme === 'dark' ? 'bg-gray-600 text-gray-200' : 'bg-gray-300 text-gray-700')
+                : (theme === 'dark' ? 'bg-gray-700' : 'bg-gray-200');
+
+          return (
+            <div key={message.id} className={`mb-4 flex ${alignment}`}>
+              <div className={`rounded-lg p-3 max-w-lg ${bubbleClass}`}>
+                <p>{message.text}</p>
+              </div>
             </div>
-          </div>
-        ))}
+          );
+        })}
       </div>
     </div>
   );

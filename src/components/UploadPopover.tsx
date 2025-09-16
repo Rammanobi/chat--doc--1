@@ -1,13 +1,17 @@
 // src/components/UploadPopover.tsx
 import { useState } from "react";
 import { ref, uploadBytesResumable, getDownloadURL } from "firebase/storage";
-import { collection, addDoc, serverTimestamp } from "firebase/firestore";
+import { collection, doc, setDoc, serverTimestamp } from "firebase/firestore";
 import { storage, db } from "../firebase";
 import { useAuth } from "../contexts/AuthContext"; // Import the useAuth hook
 import { Paperclip, X } from "lucide-react";
+import { useChatSessions } from "../contexts/ChatSessionsContext";
+import { useSelectedDoc } from "../contexts/SelectedDocContext";
 
 export default function UploadPopover() {
   const { user } = useAuth(); // Get the current user
+  const { activeSessionId } = useChatSessions();
+  const { setSelectedDocId } = useSelectedDoc();
   const [open, setOpen] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [progress, setProgress] = useState(0);
@@ -16,9 +20,33 @@ export default function UploadPopover() {
     if (!file) return;
     setUploading(true);
 
-    // We can create a user-specific folder if auth.currentUser is available
-    const storageRef = ref(storage, `documents/${file.name}-${Date.now()}`);
-    const uploadTask = uploadBytesResumable(storageRef, file);
+    if (!user) {
+      setUploading(false);
+      return;
+    }
+
+    // Create a Firestore document first to get a stable docId
+    const docRef = doc(collection(db, "documents"));
+    await setDoc(docRef, {
+      userId: user.uid,
+      sessionId: activeSessionId,
+      fileName: file.name,
+      size: file.size,
+      createdAt: serverTimestamp(),
+      status: "uploaded",
+    }, { merge: true });
+
+    // Upload to Storage with custom metadata including docId
+    const storagePath = `documents/${docRef.id}/${file.name}`;
+    const storageRef = ref(storage, storagePath);
+    const uploadTask = uploadBytesResumable(storageRef, file, {
+      contentType: file.type,
+      customMetadata: {
+        docId: docRef.id,
+        userId: user.uid,
+        sessionId: activeSessionId,
+      }
+    });
 
     uploadTask.on("state_changed",
       (snapshot) => {
@@ -31,18 +59,10 @@ export default function UploadPopover() {
       },
       async () => {
         const url = await getDownloadURL(uploadTask.snapshot.ref);
-        
-        // Add user's ID to the document data
-        if (user) {
-          await addDoc(collection(db, "documents"), {
-            userId: user.uid, // Tag with user's ID
-            fileName: file.name,
-            size: file.size,
-            url,
-            createdAt: serverTimestamp(),
-            status: "uploaded"
-          });
-        }
+        // Update the existing doc with the download URL
+        await setDoc(docRef, { url }, { merge: true });
+        // Auto-select the newly uploaded document for this session
+        setSelectedDocId(docRef.id);
 
         setUploading(false);
         setOpen(false); // close popover after upload
