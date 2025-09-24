@@ -13,6 +13,38 @@ import { useChatSessions } from '../contexts/ChatSessionsContext';
 
 const SCROLL_STICKY_EPS = 80;
 
+// Strip markdown-like symbols from AI answers for clean display/copy
+function sanitizeAnswer(text: string): string {
+  let s = text ?? '';
+  // Remove fenced code blocks
+  s = s.replace(/```[\s\S]*?```/g, '');
+  // Inline code backticks
+  s = s.replace(/`([^`]+)`/g, '$1');
+  // Horizontal rules like --- *** ___ on their own line
+  s = s.replace(/^\s*[-*_]{3,}\s*$/gm, '');
+  // Headings (e.g., # Title)
+  s = s.replace(/^#{1,6}\s*/gm, '');
+  // Emphasis markers ** __ * _
+  s = s.replace(/\*\*(.*?)\*\*/g, '$1');
+  s = s.replace(/__(.*?)__/g, '$1');
+  s = s.replace(/\*(.*?)\*/g, '$1');
+  s = s.replace(/_(.*?)_/g, '$1');
+  // Bullet prefixes at line start
+  s = s.replace(/^\s*[*+-]\s+/gm, '');
+  // Replace any inline [[chunkId: ...]] tokens
+  s = s.replace(/\[\[\s*chunkId\s*:[^\]]+\]\]/gi, '[source]');
+  // Normalize "Quick Takeaway" heading by removing any parenthetical hints like "(2 or 3 or 4 lines)"
+  s = s.replace(/Quick\s*Takeaway\s*\([^\)]*\)\s*:/gi, 'Quick Takeaway:');
+  s = s.replace(/Quick\s*Takeaway\s*\([^\)]*\)/gi, 'Quick Takeaway');
+  // Collapse sequences of 3+ hyphens/asterisks used as separators
+  s = s.replace(/-{3,}/g, ' ');
+  s = s.replace(/\*{3,}/g, '');
+  // Trim trailing spaces per line and collapse excessive blank lines
+  s = s.replace(/[ \t]+$/gm, '');
+  s = s.replace(/\n{3,}/g, '\n\n');
+  return s.trim();
+}
+
 const MainPanel: React.FC = () => {
   const { theme, toggleTheme } = useTheme();
   const { user } = useAuth();
@@ -81,9 +113,8 @@ const MainPanel: React.FC = () => {
       >(functions, 'askQuestion');
       const result = await callable({ question, documentId: selectedDocId, sessionId: remember ? sid : undefined, remember });
       const payload: any = result.data || {};
-      // Hide internal chunk IDs that may appear inline in the model's raw text
       const rawAnswer = payload.answer ?? 'No answer returned.';
-      const answer = rawAnswer.replace(/\[\[\s*chunkId\s*:[^\]]+\]\]/gi, '[source]');
+      const answer = sanitizeAnswer(rawAnswer);
       if (remember) {
         const aiId = await addMessage({ id: `${Date.now()}_a`, text: answer, sender: 'ai' }, sid);
         setExtrasById((prev) => ({

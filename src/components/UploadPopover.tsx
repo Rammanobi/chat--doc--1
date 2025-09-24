@@ -25,6 +25,13 @@ export default function UploadPopover() {
       return;
     }
 
+    // Block unsupported legacy Word files (.doc). Supported: PDF, DOCX, TXT.
+    if (file.name.toLowerCase().endsWith(".doc")) {
+      alert("Unsupported file type .doc. Please upload PDF, DOCX, or TXT.");
+      setUploading(false);
+      return;
+    }
+
     // Create a Firestore document first to get a stable docId
     const docRef = doc(collection(db, "documents"));
     await setDoc(docRef, {
@@ -95,7 +102,7 @@ export default function UploadPopover() {
             <input
               type="file"
               hidden
-              accept=".pdf,.doc,.docx, .txt"
+              accept=".pdf,.docx,.txt"
               onChange={(e) => e.target.files && handleUpload(e.target.files[0])}
             />
           </label>
